@@ -1,68 +1,84 @@
 import tensorflow as tf
-from tensorflow.keras import layers
-from tensorflow.keras.models import Model
-from tensorflow.keras.applications import InceptionV3
-import numpy as np
+from tensorflow.keras import layers, models
+import tensorflow_hub as hub
 
-class CustomHybridModel(tf.keras.Model):
-    def __init__(self, num_classes, patch_size=16, embed_dim=768, num_heads=12, num_layers=6):
-        super(CustomHybridModel, self).__init__()
-        
-        self.patch_size = patch_size
-        self.embed_dim = embed_dim
+class ConvNeXtViT(tf.keras.Model):
+    def __init__(self, input_shape, num_classes):
+        super(ConvNeXtViT, self).__init__()
+        self.input_shape_ = input_shape
         self.num_classes = num_classes
-        
-        # InceptionV3 Backbone
-        self.inception = InceptionV3(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
-        self.inception.trainable = False
-        
-        # Convolutional Layer to Map Patches to Embedding Dimension
-        self.conv_proj = layers.Conv2D(embed_dim, (patch_size, patch_size), strides=(patch_size, patch_size), padding='valid')
-        
-        # Positional Encoding
-        self.pos_embedding = self.add_weight("pos_embedding", shape=(1, 196, embed_dim), initializer='random_normal', trainable=True)
-        self.cls_token = self.add_weight("cls_token", shape=(1, 1, embed_dim), initializer='random_normal', trainable=True)
+        self.embed_dim = 768
+        self.num_heads = 8
+        self.ff_dim = 512
 
-        # Transformer Encoder Layers
-        self.transformer_layers = [
-            layers.TransformerBlock(embed_dim, num_heads, embed_dim * 4) for _ in range(num_layers)
-        ]
-
+        # ConvNeXt Backbone
+        self.convnext = self.build_convnext()
+        self.global_avg_pool = layers.GlobalAveragePooling2D()
+        
+        # Transformer Encoder
+        self.transformer = self.build_transformer()
+        self.reshape = layers.Reshape((1, self.embed_dim))
+        self.global_avg_pool_1d = layers.GlobalAveragePooling1D()
+        
         # Classification Head
-        self.fc = tf.keras.Sequential([
-            layers.LayerNormalization(),
-            layers.Dense(num_classes, activation='softmax')
-        ])
+        self.layer_norm = layers.LayerNormalization()
+        self.dense1 = layers.Dense(256, activation="relu")
+        self.dropout = layers.Dropout(0.3)
+        self.classifier = layers.Dense(num_classes, activation="softmax")
 
-    def extract_patches(self, features):
-        B, H, W, C = features.shape
-        patches = self.conv_proj(features)  # (B, H/P, W/P, embed_dim)
-        patches = tf.reshape(patches, (B, -1, self.embed_dim))  # (B, Num_Patches, embed_dim)
-        return patches
+    def build_convnext(self):
+        base_model = hub.KerasLayer("https://tfhub.dev/sayakpaul/convnext_tiny_imagenet/1", trainable=True)
+        inputs = layers.Input(shape=self.input_shape_)
+        x = base_model(inputs)
+
+        # Wrap the base_model into a Functional API model
+        model = models.Model(inputs, x, name="ConvNeXt_Backbone")
+
+        # Freeze 80% of layers
+        num_layers = len(model.layers)
+        freeze_upto = int(num_layers * 0.8)  # 80% layers
+        print(f"Freezing {freeze_upto}/{num_layers} layers")
+
+        for layer in model.layers[:freeze_upto]:
+            layer.trainable = False
+
+        return model
+
+
+    def build_transformer(self):
+        att = layers.MultiHeadAttention(num_heads=self.num_heads, key_dim=self.embed_dim)
+        ffn = models.Sequential([
+            layers.Dense(self.ff_dim, activation="gelu"),
+            layers.Dense(self.embed_dim),
+        ])
+        return att, ffn
 
     def call(self, inputs):
-        # Step 1: InceptionV3 Backbone
-        features = self.inception(inputs)
-        
-        # Step 2: Flatten into patches
-        patches = self.extract_patches(features)
+        # ConvNeXt Feature Extraction
+        features = self.convnext(inputs)
+        features = self.global_avg_pool(features)
+        patches = self.reshape(features)
 
-        # Step 3: Add Positional Encoding
-        patches += self.pos_embedding
-        
-        # Step 4: Append CLS Token
-        cls_tokens = tf.broadcast_to(self.cls_token, [tf.shape(patches)[0], 1, self.embed_dim])
-        patches = tf.concat([cls_tokens, patches], axis=1)
+        # Transformer Encoder
+        att, ffn = self.transformer
+        attn_output = att(patches, patches)
+        out1 = layers.LayerNormalization(epsilon=1e-6)(patches + attn_output)
+        ffn_output = ffn(out1)
+        encoded = layers.LayerNormalization(epsilon=1e-6)(out1 + ffn_output)
+        encoded = self.global_avg_pool_1d(encoded)
 
-        # Step 5: Transformer Encoder
-        for transformer_layer in self.transformer_layers:
-            patches = transformer_layer(patches)
+        # Classification Head
+        x = self.layer_norm(encoded)
+        x = self.dense1(x)
+        x = self.dropout(x)
+        return self.classifier(x)
 
-        # Step 6: CLS Token for Classification
-        cls_output = patches[:, 0, :]
-        return self.fc(cls_output)
+# Compile and Test
+# input_shape = (224, 224, 3)
+# num_classes = 2
+# model = ConvNeXtViT(input_shape, num_classes)
+# model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+#               loss="sparse_categorical_crossentropy", metrics=["accuracy"])
 
-# Instantiate Model
-# model = CustomHybridModel(num_classes=2)
-# model.build(input_shape=(None, 224, 224, 3))
+# model.build(input_shape=(None, *input_shape))
 # model.summary()
