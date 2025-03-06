@@ -9,8 +9,7 @@
 
 # requirements.txt
 flwr
-torch
-torchvision
+tensorflow
 numpy
 scikit-learn
 matplotlib
