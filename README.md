@@ -12,6 +12,22 @@ Kidney stone detection through medical imaging plays a crucial role in early dia
 - **TensorFlow/PyTorch:** Deep learning framework for model development.
 - **OpenCV & NumPy:** Image preprocessing and data augmentation (DIP).
 
+## Custom ViT
+###Custom Vision Transformer Architecture
+####The model consists of two primary stages:
+
+#####ConvNeXt Backbone
+-Pre-trained ConvNeXt-Tiny model from TensorFlow Hub.
+-Used as the feature extractor for CT scans.
+-80% of layers frozen during training to leverage transfer learning.
+#####Vision Transformer Encoder
+-Multi-Head Self Attention (MHSA) layer with:
+-8 heads
+-768 embedding dimensions
+-Feed Forward Network (FFN) with GELU activation.
+-Residual connections with Layer Normalization.
+-Global Average Pooling for final feature embeddings.
+
 ## Features
 - Privacy-preserving training using **Federated Learning**.
 - Custom Vision Transformer architecture optimized for medical images.
