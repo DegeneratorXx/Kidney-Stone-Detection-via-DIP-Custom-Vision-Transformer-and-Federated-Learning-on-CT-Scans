@@ -13,19 +13,19 @@ Kidney stone detection through medical imaging plays a crucial role in early dia
 - **OpenCV & NumPy:** Image preprocessing and data augmentation (DIP).
 
 ## Custom ViT
-Custom Vision Transformer Architecture
-The model consists of two primary stages:
+Custom Vision Transformer Architecture<br>
+The model consists of two primary stages:<br>
 
--ConvNeXt Backbone
-Pre-trained ConvNeXt-Tiny model from TensorFlow Hub.
-Used as the feature extractor for CT scans.
-80% of layers frozen during training to leverage transfer learning.
--Vision Transformer Encoder
-Multi-Head Self Attention (MHSA) layer with:
-8 heads
-768 embedding dimensions
-Feed Forward Network (FFN) with GELU activation.
-Residual connections with Layer Normalization.
+-ConvNeXt Backbone<br>
+Pre-trained ConvNeXt-Tiny model from TensorFlow Hub.<br>
+Used as the feature extractor for CT scans.<br>
+80% of layers frozen during training to leverage transfer learning.<br>
+-Vision Transformer Encoder<br>
+Multi-Head Self Attention (MHSA) layer with:<br>
+8 heads<br>
+768 embedding dimensions<br>
+Feed Forward Network (FFN) with GELU activation.<br>
+Residual connections with Layer Normalization.<br>
 Global Average Pooling for final feature embeddings.
 
 ## Features
