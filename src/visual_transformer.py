@@ -1,84 +1,62 @@
-import tensorflow as tf
-from tensorflow.keras import layers, models
-import tensorflow_hub as hub
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torchvision import models
+from timm import create_model
 
-class ConvNeXtViT(tf.keras.Model):
+class ConvNeXtViT(nn.Module):
     def __init__(self, input_shape, num_classes):
         super(ConvNeXtViT, self).__init__()
-        self.input_shape_ = input_shape
-        self.num_classes = num_classes
         self.embed_dim = 768
         self.num_heads = 8
         self.ff_dim = 512
-
-        # ConvNeXt Backbone
-        self.convnext = self.build_convnext()
-        self.global_avg_pool = layers.GlobalAveragePooling2D()
+        
+        # ConvNeXt Backbone (from timm)
+        self.convnext = create_model("convnext_tiny", pretrained=True, num_classes=0, global_pool="")
+        self.global_avg_pool = nn.AdaptiveAvgPool2d(1)
+        
+        # Freeze 80% of layers
+        total_layers = len(list(self.convnext.parameters()))
+        freeze_upto = int(total_layers * 0.8)
+        for i, param in enumerate(self.convnext.parameters()):
+            if i < freeze_upto:
+                param.requires_grad = False
         
         # Transformer Encoder
-        self.transformer = self.build_transformer()
-        self.reshape = layers.Reshape((1, self.embed_dim))
-        self.global_avg_pool_1d = layers.GlobalAveragePooling1D()
+        self.attn = nn.MultiheadAttention(embed_dim=self.embed_dim, num_heads=self.num_heads, batch_first=True)
+        self.ffn = nn.Sequential(
+            nn.Linear(self.embed_dim, self.ff_dim),
+            nn.GELU(),
+            nn.Linear(self.ff_dim, self.embed_dim)
+        )
+        self.layer_norm1 = nn.LayerNorm(self.embed_dim)
+        self.layer_norm2 = nn.LayerNorm(self.embed_dim)
         
         # Classification Head
-        self.layer_norm = layers.LayerNormalization()
-        self.dense1 = layers.Dense(256, activation="relu")
-        self.dropout = layers.Dropout(0.3)
-        self.classifier = layers.Dense(num_classes, activation="softmax")
-
-    def build_convnext(self):
-        base_model = hub.KerasLayer("https://tfhub.dev/sayakpaul/convnext_tiny_imagenet/1", trainable=True)
-        inputs = layers.Input(shape=self.input_shape_)
-        x = base_model(inputs)
-
-        # Wrap the base_model into a Functional API model
-        model = models.Model(inputs, x, name="ConvNeXt_Backbone")
-
-        # Freeze 80% of layers
-        num_layers = len(model.layers)
-        freeze_upto = int(num_layers * 0.8)  # 80% layers
-        print(f"Freezing {freeze_upto}/{num_layers} layers")
-
-        for layer in model.layers[:freeze_upto]:
-            layer.trainable = False
-
-        return model
-
-
-    def build_transformer(self):
-        att = layers.MultiHeadAttention(num_heads=self.num_heads, key_dim=self.embed_dim)
-        ffn = models.Sequential([
-            layers.Dense(self.ff_dim, activation="gelu"),
-            layers.Dense(self.embed_dim),
-        ])
-        return att, ffn
-
-    def call(self, inputs):
+        self.layer_norm = nn.LayerNorm(self.embed_dim)
+        self.dense1 = nn.Linear(self.embed_dim, 256)
+        self.dropout = nn.Dropout(0.3)
+        self.classifier = nn.Linear(256, num_classes)
+    
+    def forward(self, x):
         # ConvNeXt Feature Extraction
-        features = self.convnext(inputs)
-        features = self.global_avg_pool(features)
-        patches = self.reshape(features)
-
+        features = self.convnext(x)
+        features = self.global_avg_pool(features).view(features.shape[0], -1)
+        patches = features.unsqueeze(1)  # (B, 1, embed_dim)
+        
         # Transformer Encoder
-        att, ffn = self.transformer
-        attn_output = att(patches, patches)
-        out1 = layers.LayerNormalization(epsilon=1e-6)(patches + attn_output)
-        ffn_output = ffn(out1)
-        encoded = layers.LayerNormalization(epsilon=1e-6)(out1 + ffn_output)
-        encoded = self.global_avg_pool_1d(encoded)
-
+        attn_output, _ = self.attn(patches, patches, patches)
+        out1 = self.layer_norm1(patches + attn_output)
+        ffn_output = self.ffn(out1)
+        encoded = self.layer_norm2(out1 + ffn_output)
+        encoded = encoded.squeeze(1)  # (B, embed_dim)
+        
         # Classification Head
         x = self.layer_norm(encoded)
-        x = self.dense1(x)
+        x = F.relu(self.dense1(x))
         x = self.dropout(x)
-        return self.classifier(x)
+        return F.softmax(self.classifier(x), dim=1)
 
-# Compile and Test
-# input_shape = (224, 224, 3)
-# num_classes = 2
-# model = ConvNeXtViT(input_shape, num_classes)
-# model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
-#               loss="sparse_categorical_crossentropy", metrics=["accuracy"])
-
-# model.build(input_shape=(None, *input_shape))
-# model.summary()
+# Example usage
+# model = ConvNeXtViT(input_shape=(224, 224, 3), num_classes=2)
+# print(model)

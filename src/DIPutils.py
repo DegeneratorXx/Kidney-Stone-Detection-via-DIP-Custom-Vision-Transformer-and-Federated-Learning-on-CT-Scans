@@ -28,31 +28,20 @@ def radiometric_calibration(image, gain=1.3):
     image_corrected = image / gain
     return np.clip(image_corrected, 0, 255).astype(np.uint8)
 
-# # function for image segmentation
-# def image_segmentation(img):
-#     ret, thresh = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-#     kernel = np.ones((3, 3), np.uint8)
-#     opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
-#     sure_bg = cv2.dilate(opening, kernel, iterations=3)
-#     dist_transform = cv2.distanceTransform(opening, cv2.DIST_L2, 5)
-#     ret, sure_fg = cv2.threshold(dist_transform, 0.7 * dist_transform.max(), 255, 0)
-#     sure_fg = np.uint8(sure_fg)
-#     unknown = cv2.subtract(sure_bg, sure_fg)
-#     markers = cv2.connectedComponents(sure_fg)[1]
-#     markers += 1
-#     markers[unknown == 255] = 0
-#     img_color = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-#     cv2.watershed(img_color, markers)
-#     img_color[markers == -1] = [0, 255, 0]
-#     return img_color
+class DIPTransform:
+    def __init__(self, target_size=500):
+        self.target_size = target_size
 
-# # function to detect edges in an image
-# def image_edges(image, type):
-#     # best == canny
-#     if(type == 'canny'):
-#         image = cv2.Canny(image, 200, 400)
-#     elif(type == 'sobel'):
-#         image = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=5)
-#     elif(type == 'laplacian'):
-#         image = cv2.Laplacian(image, cv2.CV_64F)
-#     return image
+    def __call__(self, img):
+        # Convert PIL image to NumPy array (OpenCV works with NumPy arrays)
+        img = np.array(img)
+
+        # Apply DIP functions
+        img = compress_image(img, target_size=self.target_size)
+        img = image_denoising(img)
+        img = image_sharpening(img)
+        img = radiometric_calibration(img)
+
+        # Convert back to PIL image (to ensure compatibility with PyTorch transforms)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # OpenCV uses BGR, convert to RGB
+        return img
