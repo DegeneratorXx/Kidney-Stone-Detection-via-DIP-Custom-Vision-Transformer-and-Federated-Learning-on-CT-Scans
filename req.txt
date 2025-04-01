@@ -9,3 +9,7 @@ torchvision
 torch
 seaborn
 scikit-learn
+PIL
+timm
+collections
+flwr

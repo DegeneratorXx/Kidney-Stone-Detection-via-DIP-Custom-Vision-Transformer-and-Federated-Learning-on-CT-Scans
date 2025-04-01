@@ -175,3 +175,4 @@ src/__pycache__
 trial_images
 src/model.pth
 src/model20.pth
+FedML/pyproject.toml
