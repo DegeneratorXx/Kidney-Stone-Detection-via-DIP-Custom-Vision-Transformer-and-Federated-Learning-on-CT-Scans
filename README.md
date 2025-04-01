@@ -28,8 +28,13 @@ Feed Forward Network (FFN) with GELU activation.<br>
 Residual connections with Layer Normalization.<br>
 Global Average Pooling for final feature embeddings.
 
+## Performance
+Accuracy: 98.53
+F1 Score: 98.43
+Recall: 97.18
+
 ## Features
-- Privacy-preserving training using **Federated Learning**.
+- Privacy-preserving training using **Federated Learning USing Flower**.
 - Custom Vision Transformer architecture optimized for medical images.
 - Data Augmentation and Preprocessing Pipeline.
 - Performance Evaluation with metrics like **Accuracy**, **Precision**, **Recall**, and **F1-Score**.
