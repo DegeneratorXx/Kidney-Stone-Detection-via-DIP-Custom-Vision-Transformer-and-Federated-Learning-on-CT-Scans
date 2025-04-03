@@ -1,4 +1,4 @@
-# Kidney-Stone-Detection-via-DIP-Custom-Vision-Transformer-and-Federated-Learning-on-CT-Scans
+# A Federated Hybrid ConvNeXt-ViT Framework with Preprocessing Enhancement for Privacy-Preserving Medical Image Classification
 
 ## Project Overview
 This project aims to develop a **Kidney Stone Detection System** using **CT Scan images** powered by a **Custom Vision Transformer (ViT)** model integrated with **Federated Learning (FL)**. The primary objective is to create a privacy-preserving solution that leverages distributed machine learning without sharing sensitive medical data between clients.
